@@ -86,7 +86,10 @@ app.post('/api/transfer', (req, res) => {
             if (results.length === 0) return db.rollback(() => handleError(new Error('From customer not found')));
             const fromBalance = results[0].current_balance;
 
-            if (fromBalance < amount) return db.rollback(() => handleError(new Error('Insufficient funds')));
+            // Check if the customer has sufficient balance
+            if (fromBalance < amount) {
+                return db.rollback(() => res.status(400).send('Insufficient funds'));
+            }
 
             // Update fromCustomer balance
             db.query('UPDATE customers SET current_balance = current_balance - ? WHERE email = ?', [amount, fromCustomerEmail], (err, result) => {
@@ -117,6 +120,7 @@ app.post('/api/transfer', (req, res) => {
         db.rollback(() => res.status(500).send(`Server error: ${err.message}`));
     }
 });
+
 
 // Start the server
 const PORT = 3000;
