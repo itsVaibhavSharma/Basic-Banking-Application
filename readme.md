@@ -2,6 +2,12 @@
 
 This is a **Bank Application** built with **Express.js** and **MySQL**, allowing users to manage finances with features like viewing customer details, transferring money, and more. The application includes user authentication, error handling, and a clean, responsive interface for ease of use.
 
+## DEMO
+
+You can see the live demo of the project here: [Live Demo Here](https://basic-banking-application-mocha.vercel.app/)
+
+Postgres is used for deployment purpose.
+
 ## Table of Contents
 
 - [Features](#features)
