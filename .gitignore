@@ -1,7 +1,6 @@
 .gitignore
 .git
 .gitattributes
-package.json
 package-lock.json
 node_modules
 TSFtask.session.sql
