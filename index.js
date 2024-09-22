@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2');
+const { Client } = require('pg'); // Import the pg package
 const path = require('path');
 
 const app = express();
@@ -7,19 +7,17 @@ const app = express();
 app.use(express.static('public'));
 app.use(express.json());
 
-const db = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'pass', // Replace with your MySQL root password
-    database: 'bank'
+// PostgreSQL connection configuration
+const db = new Client({
+    connectionString: "postgres://default:lmeuKtvbA9r0@ep-morning-voice-a4ds1ucg.us-east-1.aws.neon.tech:5432/verceldb?sslmode=require",
 });
 
 db.connect(err => {
     if (err) {
-        console.error('Error connecting to MySQL:', err);
+        console.error('Error connecting to PostgreSQL:', err);
         return;
     }
-    console.log('MySQL Connected...');
+    console.log('PostgreSQL Connected...');
 });
 
 // Serve the main HTML files
@@ -43,24 +41,24 @@ app.get('/api/customers', (req, res) => {
             res.status(500).send('Server error');
             return;
         }
-        res.json(results);
+        res.json(results.rows); // Use results.rows for PostgreSQL
     });
 });
 
 // API route to get a single customer by email
 app.get('/api/customer/:email', (req, res) => {
     const customerEmail = req.params.email;
-    db.query('SELECT * FROM customers WHERE email = ?', [customerEmail], (err, results) => {
+    db.query('SELECT * FROM customers WHERE email = $1', [customerEmail], (err, results) => { // Use $1 for parameterized query
         if (err) {
             console.error('Error executing query:', err);
             res.status(500).send('Server error');
             return;
         }
-        if (results.length === 0) {
+        if (results.rows.length === 0) {
             res.status(404).send('Customer not found');
             return;
         }
-        res.json(results[0]);
+        res.json(results.rows[0]); // Use results.rows for PostgreSQL
     });
 });
 
@@ -77,35 +75,35 @@ app.post('/api/transfer', (req, res) => {
     }
 
     // Start transaction
-    db.beginTransaction(err => {
+    db.query('BEGIN', err => {
         if (err) return handleError(err);
 
         // Check if fromCustomerEmail exists and has sufficient balance
-        db.query('SELECT current_balance FROM customers WHERE email = ?', [fromCustomerEmail], (err, results) => {
-            if (err) return db.rollback(() => handleError(err));
-            if (results.length === 0) return db.rollback(() => handleError(new Error('From customer not found')));
-            const fromBalance = results[0].current_balance;
+        db.query('SELECT current_balance FROM customers WHERE email = $1', [fromCustomerEmail], (err, results) => {
+            if (err) return db.query('ROLLBACK', () => handleError(err));
+            if (results.rows.length === 0) return db.query('ROLLBACK', () => handleError(new Error('From customer not found')));
+            const fromBalance = results.rows[0].current_balance;
 
             // Check if the customer has sufficient balance
             if (fromBalance < amount) {
-                return db.rollback(() => res.status(400).send('Insufficient funds'));
+                return db.query('ROLLBACK', () => res.status(400).send('Insufficient funds'));
             }
 
             // Update fromCustomer balance
-            db.query('UPDATE customers SET current_balance = current_balance - ? WHERE email = ?', [amount, fromCustomerEmail], (err, result) => {
-                if (err) return db.rollback(() => handleError(err));
+            db.query('UPDATE customers SET current_balance = current_balance - $1 WHERE email = $2', [amount, fromCustomerEmail], (err, result) => {
+                if (err) return db.query('ROLLBACK', () => handleError(err));
 
                 // Update toCustomer balance
-                db.query('UPDATE customers SET current_balance = current_balance + ? WHERE email = ?', [amount, toCustomerEmail], (err, result) => {
-                    if (err) return db.rollback(() => handleError(err));
+                db.query('UPDATE customers SET current_balance = current_balance + $1 WHERE email = $2', [amount, toCustomerEmail], (err, result) => {
+                    if (err) return db.query('ROLLBACK', () => handleError(err));
 
                     // Record the transfer
-                    db.query('INSERT INTO transfers (from_customer_email, to_customer_email, amount) VALUES (?, ?, ?)', [fromCustomerEmail, toCustomerEmail, amount], (err, result) => {
-                        if (err) return db.rollback(() => handleError(err));
+                    db.query('INSERT INTO transfers (from_customer_email, to_customer_email, amount) VALUES ($1, $2, $3)', [fromCustomerEmail, toCustomerEmail, amount], (err, result) => {
+                        if (err) return db.query('ROLLBACK', () => handleError(err));
 
                         // Commit the transaction
-                        db.commit(err => {
-                            if (err) return db.rollback(() => handleError(err));
+                        db.query('COMMIT', err => {
+                            if (err) return db.query('ROLLBACK', () => handleError(err));
 
                             res.send('Transfer successful');
                         });
@@ -117,10 +115,9 @@ app.post('/api/transfer', (req, res) => {
 
     function handleError(err) {
         console.error('Transaction error:', err);
-        db.rollback(() => res.status(500).send(`Server error: ${err.message}`));
+        db.query('ROLLBACK', () => res.status(500).send(`Server error: ${err.message}`));
     }
 });
-
 
 // Start the server
 const PORT = 3000;
