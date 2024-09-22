@@ -35,7 +35,7 @@ app.get('/customer/:email', (req, res) => {
 
 // API route to get all customers
 app.get('/api/customers', (req, res) => {
-    db.query('SELECT * FROM customers', (err, results) => {
+    db.query('SELECT * FROM customers ORDER BY name ASC', (err, results) => {
         if (err) {
             console.error('Error executing query:', err);
             res.status(500).send('Server error');
